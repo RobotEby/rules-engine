@@ -1,173 +1,137 @@
-import type { Condition, Rule, RuleSet, ComparisonOperator } from "./types.js";
-import { RuleValidationError } from "./types.js";
+import type { Condition, RuleSet, Facts, ComparisonOperator } from "./types.js";
+import { FactsValidationError, RuleValidationError } from "./types.js";
+import { isPlainObject, propertyPath, validateData, VALIDATION_LIMITS } from "./data.js";
+import { isValidPath } from "./paths.js";
 
-const VALID_OPERATORS: ComparisonOperator[] = [
-  "eq",
-  "ne",
-  "gt",
-  "gte",
-  "lt",
-  "lte",
-  "in",
-  "notIn",
-  "exists",
-  "notExists",
-];
+const OPERATORS: readonly ComparisonOperator[] = ["eq", "ne", "gt", "gte", "lt", "lte", "in", "notIn", "exists", "notExists"];
+const NUMERIC = new Set(["gt", "gte", "lt", "lte"]);
+export interface ValidationResult { valid: boolean; errors: string[] }
 
-export interface ValidationResult {
-  valid: boolean;
-  errors: string[];
+function unknownKeys(obj: Record<string, unknown>, allowed: string[], path: string, errors: string[]): void {
+  for (const key of Object.keys(obj)) {
+    if (!allowed.includes(key)) errors.push(`${propertyPath(path, key)}: propriedade desconhecida`);
+  }
 }
 
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
+function nonemptyString(obj: Record<string, unknown>, key: string, path: string, errors: string[]): void {
+  if (typeof obj[key] !== "string" || obj[key].trim() === "") {
+    errors.push(`${propertyPath(path, key)}: obrigatório e deve ser uma string não-vazia`);
+  }
 }
 
-function validateCondition(c: unknown, path: string, errors: string[]): void {
-  if (!isPlainObject(c)) {
-    errors.push(`${path}: condição deve ser um objeto`);
+function conditionSchema(c: unknown, path: string, errors: string[], budget: { count: number }): void {
+  if (++budget.count > VALIDATION_LIMITS.maxConditions) {
+    if (budget.count === VALIDATION_LIMITS.maxConditions + 1) errors.push(`${path}: limite de ${VALIDATION_LIMITS.maxConditions} condições excedido`);
     return;
   }
-
-  const keys = Object.keys(c);
-  const combinatorKeys = keys.filter(
-    (k) => k === "all" || k === "any" || k === "not",
-  );
-  const isField = "field" in c || "operator" in c;
-
-  if (combinatorKeys.length > 1) {
-    errors.push(
-      `${path}: use apenas um combinador por nó (all | any | not), encontrado: ${combinatorKeys.join(", ")}`,
-    );
-    return;
-  }
-
-  if (combinatorKeys.length === 1 && isField) {
-    errors.push(
-      `${path}: não é possível misturar "${combinatorKeys[0]}" com "field"/"operator" no mesmo nó`,
-    );
-    return;
-  }
-
-  if (combinatorKeys[0] === "all" || combinatorKeys[0] === "any") {
-    const arr = (c as Record<string, unknown>)[combinatorKeys[0]];
-    if (!Array.isArray(arr) || arr.length === 0) {
-      errors.push(
-        `${path}.${combinatorKeys[0]}: deve ser um array não-vazio de condições`,
-      );
+  if (!isPlainObject(c)) { errors.push(`${path}: condição deve ser um objeto`); return; }
+  const combinators = ["all", "any", "not"].filter(key => Object.hasOwn(c, key));
+  if (combinators.length > 1) { errors.push(`${path}: use apenas um combinador por nó (all | any | not)`); return; }
+  const combinator = combinators[0];
+  if (combinator) {
+    if (Object.hasOwn(c, "field") || Object.hasOwn(c, "operator")) {
+      errors.push(`${path}: não é possível misturar combinador com field/operator`);
       return;
     }
-    arr.forEach((child, i) =>
-      validateCondition(child, `${path}.${combinatorKeys[0]}[${i}]`, errors),
-    );
+    unknownKeys(c, [combinator], path, errors);
+    if (combinator === "not") {
+      conditionSchema(c.not, `${path}.not`, errors, budget);
+    } else {
+      const children = c[combinator];
+      if (!Array.isArray(children) || children.length === 0) {
+        errors.push(`${path}.${combinator}: deve ser um array não-vazio de condições`);
+      } else {
+        for (let i = 0; i < children.length && budget.count <= VALIDATION_LIMITS.maxConditions; i++) {
+          conditionSchema(children[i], `${path}.${combinator}[${i}]`, errors, budget);
+        }
+      }
+    }
     return;
   }
-
-  if (combinatorKeys[0] === "not") {
-    validateCondition(
-      (c as Record<string, unknown>).not,
-      `${path}.not`,
-      errors,
-    );
+  unknownKeys(c, ["field", "operator", "value"], path, errors);
+  nonemptyString(c, "field", path, errors);
+  if (typeof c.field === "string" && !isValidPath(c.field)) errors.push(`${path}.field: caminho inválido (segmento vazio ou reservado)`);
+  if (typeof c.operator !== "string" || !OPERATORS.includes(c.operator as ComparisonOperator)) {
+    errors.push(`${path}.operator: deve ser um de [${OPERATORS.join(", ")}]`);
     return;
   }
-
-  // Condição de campo
-  if (typeof c.field !== "string" || c.field.trim() === "") {
-    errors.push(`${path}.field: obrigatório e deve ser uma string não-vazia`);
-  }
-  if (
-    typeof c.operator !== "string" ||
-    !VALID_OPERATORS.includes(c.operator as ComparisonOperator)
-  ) {
-    errors.push(
-      `${path}.operator: deve ser um de [${VALID_OPERATORS.join(", ")}], recebido "${String(c.operator)}"`,
-    );
-  }
-  const needsValue = c.operator !== "exists" && c.operator !== "notExists";
-  if (needsValue && !("value" in c)) {
-    errors.push(
-      `${path}.value: obrigatório para o operador "${String(c.operator)}"`,
-    );
-  }
-  if (
-    (c.operator === "in" || c.operator === "notIn") &&
-    !Array.isArray(c.value)
-  ) {
-    errors.push(
-      `${path}.value: deve ser um array para o operador "${String(c.operator)}"`,
-    );
-  }
-}
-
-function validateRule(
-  r: unknown,
-  index: number,
-  errors: string[],
-  seenIds: Set<string>,
-): void {
-  const path = `rules[${index}]`;
-  if (!isPlainObject(r)) {
-    errors.push(`${path}: deve ser um objeto`);
+  if (c.operator !== "exists" && c.operator !== "notExists" && !Object.hasOwn(c, "value")) {
+    errors.push(`${path}.value: obrigatório para o operador "${c.operator}"`);
     return;
   }
-  if (typeof r.id !== "string" || r.id.trim() === "") {
-    errors.push(`${path}.id: obrigatório e deve ser uma string não-vazia`);
-  } else if (seenIds.has(r.id)) {
-    errors.push(`${path}.id: id duplicado "${r.id}"`);
-  } else {
-    seenIds.add(r.id);
+  if (NUMERIC.has(c.operator) && (typeof c.value !== "number" || !Number.isFinite(c.value))) {
+    errors.push(`${path}.value: deve ser um número finito para o operador "${c.operator}"`);
   }
-  if (r.priority !== undefined && typeof r.priority !== "number") {
-    errors.push(`${path}.priority: deve ser um número`);
-  }
-  if (r.enabled !== undefined && typeof r.enabled !== "boolean") {
-    errors.push(`${path}.enabled: deve ser um booleano`);
-  }
-  if (!isPlainObject(r.action)) {
-    errors.push(`${path}.action: obrigatório e deve ser um objeto`);
-  } else if (typeof r.action.type !== "string" || r.action.type.trim() === "") {
-    errors.push(
-      `${path}.action.type: obrigatório e deve ser uma string não-vazia`,
-    );
-  }
-  if (r.conditions === undefined) {
-    errors.push(`${path}.conditions: obrigatório`);
-  } else {
-    validateCondition(r.conditions, `${path}.conditions`, errors);
+  if ((c.operator === "in" || c.operator === "notIn") && !Array.isArray(c.value)) {
+    errors.push(`${path}.value: deve ser um array para o operador "${c.operator}"`);
   }
 }
 
 export function validateRuleSet(input: unknown): ValidationResult {
-  const errors: string[] = [];
-
-  if (!isPlainObject(input)) {
-    return { valid: false, errors: ["o ruleset deve ser um objeto JSON"] };
-  }
-
-  if (typeof input.version !== "string" || input.version.trim() === "") {
-    errors.push("version: obrigatório e deve ser uma string não-vazia");
-  }
-  if (typeof input.name !== "string" || input.name.trim() === "") {
-    errors.push("name: obrigatório e deve ser uma string não-vazia");
-  }
+  const errors = validateData(input, false, "ruleset");
+  if (errors.length) return { valid: false, errors };
+  if (!isPlainObject(input)) return { valid: false, errors: ["o ruleset deve ser um objeto JSON"] };
+  unknownKeys(input, ["version", "name", "description", "rules"], "", errors);
+  nonemptyString(input, "version", "", errors);
+  nonemptyString(input, "name", "", errors);
+  if (Object.hasOwn(input, "description") && typeof input.description !== "string") errors.push("description: deve ser uma string");
   if (!Array.isArray(input.rules)) {
     errors.push("rules: obrigatório e deve ser um array");
   } else if (input.rules.length === 0) {
     errors.push("rules: deve conter ao menos uma regra");
+  } else if (input.rules.length > VALIDATION_LIMITS.maxRules) {
+    errors.push(`rules: limite de ${VALIDATION_LIMITS.maxRules} regras excedido`);
   } else {
-    const seenIds = new Set<string>();
-    input.rules.forEach((r, i) => validateRule(r, i, errors, seenIds));
+    const seen = new Set<string>();
+    const budget = { count: 0 };
+    for (let i = 0; i < input.rules.length; i++) {
+      const r: unknown = input.rules[i];
+      const path = `rules[${i}]`;
+      if (!isPlainObject(r)) { errors.push(`${path}: deve ser um objeto`); continue; }
+      unknownKeys(r, ["id", "description", "priority", "enabled", "conditions", "action"], path, errors);
+      nonemptyString(r, "id", path, errors);
+      if (typeof r.id === "string") {
+        if (seen.has(r.id)) errors.push(`${path}.id: id duplicado "${r.id}"`);
+        seen.add(r.id);
+      }
+      if (Object.hasOwn(r, "description") && typeof r.description !== "string") errors.push(`${path}.description: deve ser uma string`);
+      if (Object.hasOwn(r, "priority") && (typeof r.priority !== "number" || !Number.isFinite(r.priority))) errors.push(`${path}.priority: deve ser um número finito`);
+      if (Object.hasOwn(r, "enabled") && typeof r.enabled !== "boolean") errors.push(`${path}.enabled: deve ser um booleano`);
+      if (!isPlainObject(r.action)) {
+        errors.push(`${path}.action: obrigatório e deve ser um objeto`);
+      } else {
+        unknownKeys(r.action, ["type", "params"], `${path}.action`, errors);
+        nonemptyString(r.action, "type", `${path}.action`, errors);
+        if (Object.hasOwn(r.action, "params") && !isPlainObject(r.action.params)) errors.push(`${path}.action.params: deve ser um objeto`);
+      }
+      if (!Object.hasOwn(r, "conditions")) errors.push(`${path}.conditions: obrigatório`);
+      else conditionSchema(r.conditions, `${path}.conditions`, errors, budget);
+    }
   }
-
   return { valid: errors.length === 0, errors };
 }
 
 export function assertRuleSet(input: unknown): asserts input is RuleSet {
   const { valid, errors } = validateRuleSet(input);
-  if (!valid) {
-    throw new RuleValidationError(errors);
-  }
+  if (!valid) throw new RuleValidationError(errors);
 }
 
-export type { Condition, Rule };
+export function assertCondition(input: unknown): asserts input is Condition {
+  const errors = validateData(input, false, "condition");
+  if (!errors.length) conditionSchema(input, "condition", errors, { count: 0 });
+  if (errors.length) throw new RuleValidationError(errors);
+}
+
+export function validateFacts(input: unknown): ValidationResult {
+  const errors = validateData(input, true, "facts");
+  if (!errors.length && !isPlainObject(input)) errors.push("facts: deve ser um objeto de dados simples");
+  return { valid: errors.length === 0, errors };
+}
+
+export function assertFacts(input: unknown): asserts input is Facts {
+  const { valid, errors } = validateFacts(input);
+  if (!valid) throw new FactsValidationError(errors);
+}
+
+export { VALIDATION_LIMITS } from "./data.js";
+export type { Condition, Rule } from "./types.js";

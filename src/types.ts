@@ -1,3 +1,9 @@
+/** Dados aceitos nas regras, sem conversões implícitas. */
+export type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
+export interface JsonObject { [key: string]: JsonValue }
+/** Fatos também admitem propriedades explicitamente undefined. */
+export type FactValue = undefined | null | boolean | number | string | FactValue[] | Facts;
+
 export type ComparisonOperator =
   | "eq" // igual
   | "ne" // diferente
@@ -14,7 +20,7 @@ export type ComparisonOperator =
 export interface FieldCondition {
   field: string; // caminho em notação de ponto, ex: "destino.regiao"
   operator: ComparisonOperator;
-  value?: unknown; // não é obrigatório para exists/notExists
+  value?: JsonValue; // não é obrigatório para exists/notExists
 }
 
 /** Combinador lógico E: todas as sub-condições devem ser verdadeiras. */
@@ -41,7 +47,7 @@ export type Condition =
 /** Ação disparada quando as condições de uma regra são satisfeitas. */
 export interface RuleAction {
   type: string; // ex: "FREE_SHIPPING", "PERCENT_DISCOUNT"
-  params?: Record<string, unknown>;
+  params?: JsonObject;
 }
 
 export interface Rule {
@@ -66,8 +72,8 @@ export interface RuleSet {
 /** Modo de avaliação: parar na primeira regra que casar ou coletar todas. */
 export type EvaluationMode = "first-match" | "collect-all";
 
-/** Fatos de entrada para avaliação: objeto arbitrário (ex.: um pedido). */
-export type Facts = Record<string, unknown>;
+/** Objeto de dados simples; validado em runtime antes da avaliação. */
+export interface Facts { [key: string]: FactValue }
 
 /** Nó de explicação: representa o resultado da avaliação de uma condição. */
 export interface ConditionTrace {
@@ -78,6 +84,8 @@ export interface ConditionTrace {
   operator?: ComparisonOperator;
   expected?: unknown;
   actual?: unknown;
+  /** Estado da folha, preservado mesmo quando JSON omite actual: undefined. */
+  actualState?: "missing" | "undefined" | "null" | "value";
   /** Presente para "all" | "any" | "not". */
   children?: ConditionTrace[];
 }
@@ -113,5 +121,12 @@ export class RuleSetNotFoundError extends Error {
   constructor(version: string) {
     super(`Versão de ruleset não encontrada: "${version}"`);
     this.name = "RuleSetNotFoundError";
+  }
+}
+
+export class FactsValidationError extends Error {
+  constructor(public errors: string[]) {
+    super(`Fatos inválidos:\n- ${errors.join("\n- ")}`);
+    this.name = "FactsValidationError";
   }
 }
