@@ -1,0 +1,25 @@
+{
+  "name": "rules-engine",
+  "version": "1.0.0",
+  "description": "Motor de regras em JSON (TypeScript) com hot-reload, versionamento e explicabilidade",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "demo": "tsx examples/demo.ts",
+    "server": "tsx examples/server.ts",
+    "test": "tsx --test tests/*.test.ts"
+  },
+  "keywords": [
+    "rules-engine",
+    "json",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}
