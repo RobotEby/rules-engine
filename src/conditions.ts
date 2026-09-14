@@ -7,6 +7,9 @@ import type {
   AnyCondition,
   NotCondition,
 } from "./types.js";
+import { copyData } from "./data.js";
+import { resolvePath } from "./paths.js";
+import { assertCondition, assertFacts } from "./validation.js";
 
 function isAllCondition(c: Condition): c is AllCondition {
   return "all" in c;
@@ -21,11 +24,9 @@ function isFieldCondition(c: Condition): c is FieldCondition {
   return "field" in c && "operator" in c;
 }
 
+/** Retorna a referência do chamador; resultados de avaliação usam cópias. */
 export function getByPath(obj: Facts, path: string): unknown {
-  return path.split(".").reduce<unknown>((acc, key) => {
-    if (acc === null || typeof acc !== "object") return undefined;
-    return (acc as Record<string, unknown>)[key];
-  }, obj);
+  return resolvePath(obj, path).value;
 }
 
 function compare(
@@ -63,9 +64,9 @@ function compare(
         actual <= expected
       );
     case "in":
-      return Array.isArray(expected) && expected.includes(actual);
+      return Array.isArray(expected) && Array.prototype.includes.call(expected, actual);
     case "notIn":
-      return Array.isArray(expected) && !expected.includes(actual);
+      return Array.isArray(expected) && !Array.prototype.includes.call(expected, actual);
     case "exists":
       return actual !== undefined && actual !== null;
     case "notExists":
@@ -81,31 +82,43 @@ export function evaluateCondition(
   condition: Condition,
   facts: Facts,
 ): ConditionTrace {
+  assertCondition(condition);
+  assertFacts(facts);
+  return evaluateValidatedCondition(condition, facts);
+}
+
+/** Uso interno: condições e fatos já passaram pela validação limitada. */
+export function evaluateValidatedCondition(
+  condition: Condition,
+  facts: Facts,
+  copies = new Map<object, object>(),
+): ConditionTrace {
   if (isFieldCondition(condition)) {
-    const actual = getByPath(facts, condition.field);
+    const { found, value: actual } = resolvePath(facts, condition.field);
     const passed = compare(condition.operator, actual, condition.value);
     return {
       type: "field",
       passed,
       field: condition.field,
       operator: condition.operator,
-      expected: condition.value,
-      actual,
+      expected: copyData(condition.value, copies),
+      actual: copyData(actual, copies),
+      actualState: !found ? "missing" : actual === undefined ? "undefined" : actual === null ? "null" : "value",
     };
   }
 
   if (isAllCondition(condition)) {
-    const children = condition.all.map((c) => evaluateCondition(c, facts));
+    const children = Array.from(condition.all, c => evaluateValidatedCondition(c, facts, copies));
     return { type: "all", passed: children.every((c) => c.passed), children };
   }
 
   if (isAnyCondition(condition)) {
-    const children = condition.any.map((c) => evaluateCondition(c, facts));
+    const children = Array.from(condition.any, c => evaluateValidatedCondition(c, facts, copies));
     return { type: "any", passed: children.some((c) => c.passed), children };
   }
 
   if (isNotCondition(condition)) {
-    const child = evaluateCondition(condition.not, facts);
+    const child = evaluateValidatedCondition(condition.not, facts, copies);
     return { type: "not", passed: !child.passed, children: [child] };
   }
 

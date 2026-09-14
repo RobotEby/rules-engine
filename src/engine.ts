@@ -7,12 +7,13 @@ import type {
   RuleSet,
 } from "./types.js";
 import { RuleSetNotFoundError, RuleValidationError } from "./types.js";
-import { validateRuleSet } from "./validation.js";
-import { evaluateCondition } from "./conditions.js";
+import { assertRuleSet, assertFacts } from "./validation.js";
+import { evaluateValidatedCondition } from "./conditions.js";
+import { copyData, freezeData } from "./data.js";
 
 interface LoadedRuleSet {
   ruleset: RuleSet;
-  loadedAt: Date;
+  loadedAt: number;
 }
 
 export interface RulesEngineOptions {
@@ -20,8 +21,8 @@ export interface RulesEngineOptions {
 }
 
 export class RulesEngine {
-  private history = new Map<string, LoadedRuleSet>();
-  private currentVersion: string | null = null;
+  #history = new Map<string, LoadedRuleSet>();
+  #currentVersion: string | null = null;
   private mode: EvaluationMode;
 
   constructor(initialRuleSet?: unknown, options: RulesEngineOptions = {}) {
@@ -32,28 +33,27 @@ export class RulesEngine {
   }
 
   loadRuleSet(input: unknown): RuleSet {
-    const { valid, errors } = validateRuleSet(input);
-    if (!valid) {
-      throw new RuleValidationError(errors);
-    }
-    const ruleset = input as RuleSet;
-    if (this.history.has(ruleset.version)) {
+    assertRuleSet(input);
+    if (this.#history.has(input.version)) {
       throw new RuleValidationError([
-        `já existe uma versão carregada com o identificador "${ruleset.version}"; use um identificador de versão novo`,
+        `já existe uma versão carregada com o identificador "${input.version}"; use um identificador de versão novo`,
       ]);
     }
-    this.history.set(ruleset.version, { ruleset, loadedAt: new Date() });
-    this.currentVersion = ruleset.version;
-    return ruleset;
+    const ruleset = freezeData(copyData(input));
+    const returned = copyData(ruleset);
+    const loadedAt = Date.now();
+    this.#history.set(ruleset.version, { ruleset, loadedAt });
+    this.#currentVersion = ruleset.version;
+    return returned;
   }
 
   getCurrentVersion(): string {
-    if (!this.currentVersion) {
+    if (!this.#currentVersion) {
       throw new Error(
         "Nenhum RuleSet carregado ainda. Chame loadRuleSet() primeiro.",
       );
     }
-    return this.currentVersion;
+    return this.#currentVersion;
   }
 
   listVersions(): {
@@ -63,32 +63,34 @@ export class RulesEngine {
     loadedAt: Date;
     active: boolean;
   }[] {
-    return [...this.history.values()]
-      .sort((a, b) => a.loadedAt.getTime() - b.loadedAt.getTime())
+    return [...this.#history.values()]
+      .sort((a, b) => a.loadedAt - b.loadedAt)
       .map(({ ruleset, loadedAt }) => ({
         version: ruleset.version,
         name: ruleset.name,
         rulesCount: ruleset.rules.length,
-        loadedAt,
-        active: ruleset.version === this.currentVersion,
+        loadedAt: new Date(loadedAt),
+        active: ruleset.version === this.#currentVersion,
       }));
   }
 
   rollback(version: string): void {
-    if (!this.history.has(version)) {
+    if (!this.#history.has(version)) {
       throw new RuleSetNotFoundError(version);
     }
-    this.currentVersion = version;
+    this.#currentVersion = version;
   }
 
   private getActiveRuleSet(): RuleSet {
     const version = this.getCurrentVersion();
-    return this.history.get(version)!.ruleset;
+    return this.#history.get(version)!.ruleset;
   }
 
   evaluate(facts: Facts): EvaluationResult {
     const ruleset = this.getActiveRuleSet();
-    const orderedRules = [...ruleset.rules]
+    assertFacts(facts);
+    const copies = new Map<object, object>();
+    const orderedRules = Array.from(ruleset.rules)
       .map((rule, index) => ({ rule, index }))
       .sort(
         (a, b) =>
@@ -103,18 +105,19 @@ export class RulesEngine {
       if (rule.enabled === false) {
         continue;
       }
-      const trace = evaluateCondition(rule.conditions, facts);
+      const trace = evaluateValidatedCondition(rule.conditions, facts, copies);
+      const action = trace.passed ? copyData(rule.action, copies) : undefined;
       const result: RuleEvaluationResult = {
         ruleId: rule.id,
         description: rule.description,
         priority: rule.priority ?? 0,
         matched: trace.passed,
-        action: trace.passed ? rule.action : undefined,
+        action,
         trace,
       };
       results.push(result);
       if (trace.passed) {
-        actions.push(rule.action);
+        actions.push(action!);
         if (this.mode === "first-match") {
           break;
         }
@@ -134,6 +137,6 @@ export class RulesEngine {
   }
 
   getActiveRules(): Rule[] {
-    return this.getActiveRuleSet().rules;
+    return copyData(this.getActiveRuleSet().rules);
   }
 }
