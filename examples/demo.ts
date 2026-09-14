@@ -37,9 +37,9 @@ export function runDemo(): void {
   const scenarios: { label: string; facts: Facts; shipping: [boolean, boolean]; discounts: number[] }[] = [
     { label: "R$180 no Sudeste", facts: pedido, shipping: [false, true], discounts: [5] },
     { label: "R$250 no Centro-Oeste", facts: { ...pedido, valorPedido: 250, destino: { regiao: "Centro-Oeste" } }, shipping: [false, true], discounts: [5] },
-    ...[149.99, 150, 199.99, 200].map(value => ({
+    ...([[149.99, false, false], [150, false, true], [199.99, false, true], [200, true, true]] as const).map(([value, v1, v2]) => ({
       label: `Limite: R$${value.toFixed(2)} no Sudeste`, facts: { ...pedido, valorPedido: value },
-      shipping: [value >= 200, value >= 150] as [boolean, boolean], discounts: [5],
+      shipping: [v1, v2] as [boolean, boolean], discounts: [5],
     })),
     { label: "R$500, primeira compra, sem destino.regiao", facts: { ...pedido, valorPedido: 500, quantidadeItens: 1, destino: {} }, shipping: [false, false], discounts: [5] },
     { label: "Descontos de 10% e 5% retornados juntos", facts: { ...pedido, valorPedido: 500, quantidadeItens: 6 }, shipping: [true, true], discounts: [10, 5] },

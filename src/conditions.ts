@@ -12,16 +12,16 @@ import { resolvePath } from "./paths.js";
 import { assertCondition, assertFacts } from "./validation.js";
 
 function isAllCondition(c: Condition): c is AllCondition {
-  return "all" in c;
+  return Object.hasOwn(c, "all");
 }
 function isAnyCondition(c: Condition): c is AnyCondition {
-  return "any" in c;
+  return Object.hasOwn(c, "any");
 }
 function isNotCondition(c: Condition): c is NotCondition {
-  return "not" in c;
+  return Object.hasOwn(c, "not");
 }
 function isFieldCondition(c: Condition): c is FieldCondition {
-  return "field" in c && "operator" in c;
+  return Object.hasOwn(c, "field") && Object.hasOwn(c, "operator");
 }
 
 /** Retorna a referência do chamador; resultados de avaliação usam cópias. */

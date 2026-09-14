@@ -14,7 +14,7 @@ function unknownKeys(obj: Record<string, unknown>, allowed: string[], path: stri
 }
 
 function nonemptyString(obj: Record<string, unknown>, key: string, path: string, errors: string[]): void {
-  if (typeof obj[key] !== "string" || obj[key].trim() === "") {
+  if (!Object.hasOwn(obj, key) || typeof obj[key] !== "string" || obj[key].trim() === "") {
     errors.push(`${propertyPath(path, key)}: obrigatório e deve ser uma string não-vazia`);
   }
 }
