@@ -14,6 +14,7 @@ import { copyData, freezeData } from "./data.js";
 interface LoadedRuleSet {
   ruleset: RuleSet;
   loadedAt: number;
+  orderedRules: readonly Rule[];
 }
 
 export interface RulesEngineOptions {
@@ -40,9 +41,13 @@ export class RulesEngine {
       ]);
     }
     const ruleset = freezeData(copyData(input));
+    const orderedRules = Object.freeze(Array.from(ruleset.rules)
+      .map((rule, index) => ({ rule, index }))
+      .sort((a, b) => (b.rule.priority ?? 0) - (a.rule.priority ?? 0) || a.index - b.index)
+      .map(({ rule }) => rule));
     const returned = copyData(ruleset);
     const loadedAt = Date.now();
-    this.#history.set(ruleset.version, { ruleset, loadedAt });
+    this.#history.set(ruleset.version, { ruleset, loadedAt, orderedRules });
     this.#currentVersion = ruleset.version;
     return returned;
   }
@@ -90,13 +95,7 @@ export class RulesEngine {
     const ruleset = this.getActiveRuleSet();
     assertFacts(facts);
     const copies = new Map<object, object>();
-    const orderedRules = Array.from(ruleset.rules)
-      .map((rule, index) => ({ rule, index }))
-      .sort(
-        (a, b) =>
-          (b.rule.priority ?? 0) - (a.rule.priority ?? 0) || a.index - b.index,
-      )
-      .map(({ rule }) => rule);
+    const { orderedRules } = this.#history.get(ruleset.version)!;
 
     const results: RuleEvaluationResult[] = [];
     const actions: EvaluationResult["actions"] = [];
