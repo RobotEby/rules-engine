@@ -1,66 +1,81 @@
+import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { RulesEngine } from "../src/index.js";
+import { RulesEngine, RuleValidationError, type EvaluationResult, type Facts, type RuleAction } from "../src/index.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SHIPPING_RULE = "frete-gratis-regioes-elegiveis";
 
 function loadJson(file: string): unknown {
-  return JSON.parse(readFileSync(path.join(__dirname, file), "utf-8"));
+  return JSON.parse(readFileSync(new URL(file, import.meta.url), "utf8"));
 }
 
-function printResult(
-  label: string,
-  result: ReturnType<RulesEngine["evaluate"]>,
-) {
-  console.log(
-    `\n--- ${label} (ruleset v${result.rulesetVersion}, modo: ${result.mode}) ---`,
-  );
-  for (const r of result.results) {
-    const status = r.matched ? "CASOU" : "  não casou";
-    console.log(`${status}  [${r.ruleId}] ${r.description ?? ""}`);
+/** Contrato comercial deste consumidor; não faz parte do núcleo genérico. */
+export function validateCheckoutActions(actions: RuleAction[]): void {
+  for (const action of actions) {
+    if (action.type !== "PERCENT_DISCOUNT") continue;
+    const percent = action.params?.percentual;
+    assert.ok(typeof percent === "number" && Number.isFinite(percent) && percent >= 0 && percent <= 100,
+      "PERCENT_DISCOUNT: percentual deve ser um número entre 0 e 100 no checkout");
   }
-  console.log("Ações disparadas:", JSON.stringify(result.actions, null, 2));
 }
 
-const pedido = {
-  valorPedido: 180,
-  quantidadeItens: 3,
-  destino: { regiao: "Sudeste" },
-  cliente: { vip: false, primeiraCompra: true },
-};
+export function requireExplanation(result: EvaluationResult, ruleId: string) {
+  const rule = result.results.find(item => item.ruleId === ruleId);
+  assert.ok(rule, `Regra "${ruleId}" não encontrada na explicação da versão ${result.rulesetVersion}`);
+  return rule.trace;
+}
 
-console.log("Pedido de exemplo:", JSON.stringify(pedido, null, 2));
+function printResult(label: string, result: EvaluationResult): void {
+  console.log(`\n${label} — versão ${result.rulesetVersion}`);
+  for (const rule of result.results) console.log(`${rule.matched ? "ATENDIDA" : "NÃO ATENDIDA"} [${rule.ruleId}] ${rule.description ?? ""}`);
+  console.log("Ações retornadas:", JSON.stringify(result.actions));
+}
 
-const engine = new RulesEngine(loadJson("rules-frete-desconto.v1.json"));
-const resultV1 = engine.evaluate(pedido);
-printResult("Avaliação com v1", resultV1);
-console.log(
-  "\nEm v1, o pedido de R$180 NÃO ganha frete grátis (limite era R$200).",
-);
+export function runDemo(): void {
+  const pedido = { valorPedido: 180, quantidadeItens: 3, destino: { regiao: "Sudeste" }, cliente: { vip: false, primeiraCompra: true } };
+  const scenarios: { label: string; facts: Facts; shipping: [boolean, boolean]; discounts: number[] }[] = [
+    { label: "R$180 no Sudeste", facts: pedido, shipping: [false, true], discounts: [5] },
+    { label: "R$250 no Centro-Oeste", facts: { ...pedido, valorPedido: 250, destino: { regiao: "Centro-Oeste" } }, shipping: [false, true], discounts: [5] },
+    ...[149.99, 150, 199.99, 200].map(value => ({
+      label: `Limite: R$${value.toFixed(2)} no Sudeste`, facts: { ...pedido, valorPedido: value },
+      shipping: [value >= 200, value >= 150] as [boolean, boolean], discounts: [5],
+    })),
+    { label: "R$500, primeira compra, sem destino.regiao", facts: { ...pedido, valorPedido: 500, quantidadeItens: 1, destino: {} }, shipping: [false, false], discounts: [5] },
+    { label: "Descontos de 10% e 5% retornados juntos", facts: { ...pedido, valorPedido: 500, quantidadeItens: 6 }, shipping: [true, true], discounts: [10, 5] },
+  ];
+  const engine = new RulesEngine(loadJson("./rules-frete-desconto.v1.json"));
+  const baseline = engine.evaluate(pedido);
+  let verified = 0;
+  for (const versionIndex of [0, 1] as const) {
+    if (versionIndex === 1) {
+      console.log("\nCarregando v2: limite reduzido de R$200 para R$150 e inclusão do Centro-Oeste.");
+      engine.loadRuleSet(loadJson("./rules-frete-desconto.v2.json"));
+    }
+    for (const scenario of scenarios) {
+      const result = engine.evaluate(scenario.facts);
+      validateCheckoutActions(result.actions);
+      assert.equal(result.rulesetVersion, String(versionIndex + 1));
+      assert.equal(result.actions.filter(action => action.type === "FREE_SHIPPING").length, Number(scenario.shipping[versionIndex]), scenario.label);
+      assert.deepEqual(result.actions.filter(action => action.type === "PERCENT_DISCOUNT").map(action => action.params?.percentual), scenario.discounts, scenario.label);
+      assert.equal(result.actions.length, Number(scenario.shipping[versionIndex]) + scenario.discounts.length, scenario.label);
+      printResult(scenario.label, result);
+      verified++;
+    }
+  }
+  console.log("\nAs ações de 10% e 5% permanecem separadas. A aplicação decide a política de composição; esta demo não soma nem aplica descontos.");
+  const versions = engine.listVersions();
+  const beforeFailure = engine.evaluate(pedido);
+  assert.throws(() => engine.loadRuleSet({ version: "3", name: "atualização inválida", rules: [] }), RuleValidationError);
+  assert.deepEqual(engine.listVersions(), versions);
+  assert.deepEqual(engine.evaluate(pedido), beforeFailure);
+  console.log("Atualização inválida rejeitada; v2 e histórico preservados.");
+  engine.rollback("1");
+  const rollback = engine.evaluate(pedido);
+  assert.deepEqual(rollback, baseline);
+  printResult("Rollback para v1", rollback);
+  console.log("\nExplicação da regra de frete:", JSON.stringify(requireExplanation(engine.explain(pedido), SHIPPING_RULE), null, 2));
+  console.log(`\nVerificações concluídas: ${verified} cenários, atualização inválida e rollback.`);
+}
 
-console.log("\n>>> Aplicando hot-reload para a v2 (limite cai para R$150)...");
-engine.loadRuleSet(loadJson("rules-frete-desconto.v2.json"));
-const resultV2 = engine.evaluate(pedido);
-printResult("Avaliação com v2 (mesmo pedido, engine não reiniciou)", resultV2);
-
-console.log("\nVersões carregadas:", engine.listVersions());
-
-console.log("\n>>> Fazendo rollback para v1...");
-engine.rollback("1");
-const resultRollback = engine.evaluate(pedido);
-printResult("Avaliação após rollback para v1", resultRollback);
-
-console.log(
-  "\n--- Explicação detalhada da regra 'frete-gratis-sudeste' em v1 ---",
-);
-const explained = engine.explain(pedido);
-const rule = explained.results.find((r) => r.ruleId === "frete-gratis-sudeste");
-console.log(JSON.stringify(rule?.trace, null, 2));
-
-console.log(
-  "\n--- Avaliação com dado ausente (destino.regiao não informado) ---",
-);
-const pedidoIncompleto = { valorPedido: 500, quantidadeItens: 1 };
-const resultIncompleto = engine.evaluate(pedidoIncompleto);
-printResult("Pedido sem destino.regiao", resultIncompleto);
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) runDemo();

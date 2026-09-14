@@ -4,8 +4,8 @@
   "description": "Regras de frete grátis e desconto por volume para o checkout",
   "rules": [
     {
-      "id": "frete-gratis-sudeste",
-      "description": "Frete grátis para pedidos acima de R$200 nas regiões Sudeste e Sul",
+      "id": "frete-gratis-regioes-elegiveis",
+      "description": "Frete grátis para pedidos a partir de R$200 nas regiões Sudeste e Sul",
       "priority": 10,
       "enabled": true,
       "conditions": {
