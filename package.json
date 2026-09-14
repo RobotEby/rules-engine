@@ -3,12 +3,26 @@
   "version": "1.0.0",
   "description": "Motor de regras em JSON (TypeScript) com hot-reload, versionamento e explicabilidade",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "files": ["dist/src", "dist/examples", "README.md"],
+  "engines": { "node": ">=22.0.0" },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node scripts/build.mjs",
+    "prepack": "npm run build",
     "demo": "tsx examples/demo.ts",
+    "demo:dist": "node dist/examples/demo.js",
     "server": "tsx examples/server.ts",
-    "test": "tsx --test tests/*.test.ts"
+    "server:dist": "node dist/examples/server.js",
+    "test": "tsx --test tests/*.test.ts",
+    "test:dist": "node --test dist/tests/*.test.js",
+    "test:package": "node scripts/verify-package.mjs"
   },
   "keywords": [
     "rules-engine",
