@@ -1,22 +1,38 @@
 # rules-engine
 
-Motor de regras em JSON, escrito em TypeScript, sem dependências de runtime.
-Inclui uma aplicação demonstrativa de descontos e frete.
+[![CI](https://github.com/RobotEby/rules-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/RobotEby/rules-engine/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
+![Node](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen)
+
+Motor de regras de negócio em TypeScript: condições definidas em JSON,
+versionamento com rollback e explicação completa de cada avaliação. Zero
+dependências de runtime. Inclui uma aplicação de exemplo (frete e desconto
+de checkout) com API HTTP.
+
+- [Por que sem dependências?](#por-que-sem-dependências)
+- [Instalação](#instalação)
+- [Uso rápido](#uso-rápido)
+- [Conceitos](#conceitos)
+- [Explicabilidade](#explicabilidade)
+- [API HTTP local](#api-http-local)
+- [Build e consumo do pacote](#build-e-consumo-do-pacote)
+- [Cobertura e CI](#cobertura-e-ci)
+- [Roadmap](#roadmap)
 
 ## Por que sem dependências?
 
-O motor não depende de nenhuma lib externa (nada de ajv, nada de framework de
-testes): a validação de schema é feita à mão em `src/validation.ts` e os
-testes usam o test runner nativo do Node (`node:test`). Isso deixa o núcleo
-fácil de auditar e de embutir em qualquer projeto. `typescript`, `tsx` e
-`@types/node` são apenas devDependencies (build/execução em dev).
+O núcleo não usa nenhuma biblioteca externa: sem `ajv`, sem framework de
+testes. A validação de schema é feita à mão em `src/validation.ts`, e os
+testes rodam no test runner nativo do Node (`node:test`). O objetivo é manter
+o motor pequeno o bastante para ser lido de ponta a ponta e embutido em
+qualquer projeto sem trazer uma árvore de dependências junto.
+`typescript`, `tsx` e `@types/node` existem só como devDependencies, para
+build e execução em desenvolvimento.
 
 ## Instalação
 
-Node **22.0.0 ou superior**. O pacote é ESM e usa APIs nativas do Node.
-Esta revisão foi verificada com Node 22.0.0/npm 10.7.0 e Node 24.18.1/npm 11.16.0:
-122 testes fonte e 122 compilados em cada ambiente, build limpo, demos e consumo
-do pacote com tipos e HTTP. Outras versões não foram executadas nesta revisão.
+Requer Node **22.0.0 ou superior**. O pacote é ESM e usa apenas APIs nativas
+do Node.
 
 ```bash
 npm ci
@@ -25,47 +41,18 @@ npm ci
 ## Uso rápido
 
 ```bash
-npm run demo          # cenários com assertions, hot-reload, rollback e explicação
-npm run server        # API local em 127.0.0.1:3000; administração desabilitada sem token
+npm run demo          # cenários com assertions: hot-reload, rollback, explicação
+npm run server        # API local em 127.0.0.1:3000 (rotas administrativas exigem ADMIN_TOKEN)
 npm test              # testes fonte, incluindo integração HTTP
 npm run build         # limpa dist, compila e copia os JSONs dos exemplos
-npm run demo:dist     # executa a demo compilada
-npm run server:dist   # executa o servidor compilado
-npm run test:dist     # executa os testes compilados
-npm run test:package  # npm pack + consumidor temporário: ESM, tipos, demo e HTTP
+npm run demo:dist     # executa a demo a partir do build
+npm run server:dist   # executa o servidor a partir do build
+npm run test:dist     # roda a suíte contra o build
+npm run test:package  # npm pack + instalação em pasta temporária: ESM, tipos, demo, HTTP
 npm run lint          # ESLint (flat config, com verificação de tipos)
 npm run typecheck     # tsc --noEmit sobre src/examples/tests
-npm run test:coverage # cobertura de src/ (linhas/branches/funções); requer Node 22.8.0+
+npm run test:coverage # cobertura de src/ com piso mínimo (requer Node 22.8.0+)
 ```
-
-## Cobertura
-
-`npm run test:coverage` mede linhas, branches e funções apenas de `src/`
-(excluindo o barrel `index.ts` e o arquivo só-de-tipos `types.ts`, que não têm
-código executável). Nesta revisão, tipicamente **~95% linhas, 96.70%
-branches, 100% funções** (a métrica de linhas oscila levemente entre execuções
-porque `--experimental-test-coverage` ainda é uma API experimental do Node).
-O comando falha se cair abaixo de 90/90/95 — o mesmo piso é verificado no CI a
-cada mudança. As linhas remanescentes fora do piso são declarações
-`import`/`export` (não executáveis) e dois `throw`/exhaustiveness guards
-inalcançáveis em tempo de execução, mantidos como defesa em profundidade.
-
-`test:coverage` exige Node **22.8.0+** (onde `--test-coverage-lines`,
-`--test-coverage-branches` e `--test-coverage-functions` foram introduzidos);
-não roda no piso mínimo declarado em `engines` (`>=22.0.0`). No CI, essa etapa
-é pulada especificamente na entrada `22.0.0` da matriz.
-
-## Integração contínua
-
-O workflow em `.github/workflows/ci.yml` roda em push e pull request: um job de
-lint + typecheck, seguido de um job de testes em matriz (Node 22.0.0, 22 e 24)
-que executa `test`, `build`, `test:dist`, `demo` e `test:package` em todas as
-versões, mais `test:coverage` nas versões que suportam os limiares de
-cobertura (todas exceto `22.0.0`).
-
-## Licença
-
-MIT — ver [`LICENSE`](./LICENSE).
 
 ## Conceitos
 
@@ -90,25 +77,29 @@ MIT — ver [`LICENSE`](./LICENSE).
 ### Condições combináveis
 
 - Atômica: `{ "field": "...", "operator": "...", "value": ... }`
-- `all`: E lógico — `{ "all": [cond, cond, ...] }`
-- `any`: OU lógico — `{ "any": [cond, cond, ...] }`
-- `not`: negação — `{ "not": cond }`
-- Combinadores podem ser aninhados dentro dos limites documentados abaixo.
+- `all`: E lógico - `{ "all": [cond, cond, ...] }`
+- `any`: OU lógico - `{ "any": [cond, cond, ...] }`
+- `not`: negação - `{ "not": cond }`
 
-Operadores: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`, `exists`, `notExists`.
+Combinadores podem ser aninhados, dentro dos limites descritos mais abaixo.
 
-`field` usa notação de ponto (`destino.regiao`). Cada segmento lê somente
-propriedades próprias de dados, sem executar getters. Campos herdados não
-são lidos. Objetos sem protótipo e índices de arrays (`itens.0.valor`) são
-aceitos; intermediários ausentes, primitivos ou nulos resultam em campo ausente.
-Segmentos vazios e `__proto__`, `prototype` ou `constructor` são rejeitados
-na validação das regras. O helper `getByPath()` retorna `undefined` nesses casos.
+Operadores disponíveis: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`,
+`exists`, `notExists`.
+
+`field` usa notação de ponto (`destino.regiao`). Cada segmento lê apenas
+propriedades próprias do dado, sem executar getters nem ler campos herdados.
+Objetos sem protótipo e índices de array (`itens.0.valor`) funcionam
+normalmente; um intermediário ausente, `null` ou primitivo resolve para campo
+ausente. Segmentos vazios e `__proto__`, `prototype` ou `constructor` são
+rejeitados na validação da regra. `getByPath()` retorna `undefined` nesses
+casos.
 
 ### Campo ausente, presença e negação
 
-As comparações existentes foram preservadas. `exists` significa valor diferente
-de `undefined` e `null`; `notExists` é seu inverso. `false`, `0` e `""` existem.
-Ausência **pode atender** a `ne`, `notIn` e condições negadas com `not`.
+`exists` é verdadeiro para qualquer valor diferente de `undefined` e `null`;
+`notExists` é o inverso. `false`, `0` e `""` contam como presentes. Um campo
+ausente **atende** a `ne`, `notIn` e a condições negadas com `not` - isso é
+intencional, não uma pegadinha:
 
 | Fato em `x` | `exists` | `notExists` | `ne: "A"` | `notIn: ["A"]` | `not(eq: "A")` | `actualState` |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -117,10 +108,9 @@ Ausência **pode atender** a `ne`, `notIn` e condições negadas com `not`.
 | `null` | false | true | true | true | true | `null` |
 | `false`, `0`, `""` | true | false | true | true | true | `value` |
 
-`eq`/`ne` usam igualdade estrita; `in`/`notIn` usam `includes`. Por exemplo,
-`eq: null` atende somente a `null`; `notIn: [null]` não atende a `null`.
-`all` e `any` combinam os resultados normalmente, e `not` sempre inverte o filho.
-Quando o negócio exigir o dado, expresse a presença na regra:
+`eq`/`ne` usam igualdade estrita; `in`/`notIn` usam `includes` (`eq: null`
+atende só a `null`; `notIn: [null]` não atende a `null`). Quando a regra
+precisa exigir que o dado exista, expresse isso explicitamente:
 
 ```json
 {
@@ -149,45 +139,46 @@ import { RulesEngine } from "rules-engine";
 const engine = new RulesEngine(ruleSetV1, { mode: "collect-all" }); // ou "first-match"
 
 engine.evaluate(fatos);        // -> EvaluationResult (ações + trace por regra)
-engine.explain(fatos);         // idêntico a evaluate(), nome mais claro p/ depuração
-engine.loadRuleSet(ruleSetV2); // valida e hot-reload: novas avaliações já usam v2
+engine.explain(fatos);         // idêntico a evaluate(), nome mais claro para depuração
+engine.loadRuleSet(ruleSetV2); // valida e ativa: novas avaliações já usam v2
 engine.listVersions();         // histórico de versões carregadas na sessão
 engine.rollback("1");          // volta a versão ativa para v1
 engine.getCurrentVersion();    // "1" | "2" | ...
 engine.getActiveRules();       // cópia das regras, na ordem original
 ```
 
-`loadRuleSet` valida, copia, congela a cópia interna e prepara a ordenação e o
-retorno antes de ativar a versão. Falhas lançam `RuleValidationError` com os
-caminhos inválidos e preservam a versão ativa e todo o histórico. Versões
-duplicadas continuam proibidas, inclusive após rollback. Um rollback inexistente
-lança `RuleSetNotFoundError` sem alterar a versão ativa.
+`loadRuleSet` valida a entrada, copia, congela a cópia interna e prepara a
+ordenação antes de ativar a nova versão - se a validação falhar, a versão
+ativa e todo o histórico permanecem intactos. `RuleValidationError` traz os
+caminhos inválidos. Identificadores de versão não podem se repetir, mesmo
+depois de um rollback; um rollback para uma versão inexistente lança
+`RuleSetNotFoundError` sem alterar a versão ativa.
 
-As regras são ordenadas uma vez por versão: prioridade decrescente, padrão zero,
-desempate pela ordem original. Desabilitadas são ignoradas. `first-match` encerra
-na primeira regra atendida; `collect-all` coleta todas as ações atendidas.
+As regras são ordenadas uma vez por versão: prioridade decrescente (padrão
+zero), desempate pela ordem original. Regras desabilitadas são ignoradas. No
+modo `first-match`, a avaliação para na primeira regra atendida; em
+`collect-all`, todas as ações de regras atendidas são retornadas.
 
 ### Cópias e referências
 
-Modificar a entrada original, o retorno de `loadRuleSet`, `getActiveRules`, ações,
-traces ou datas de `listVersions` não modifica as versões guardadas. O rollback
-recupera a cópia original. O motor não modifica nem congela os objetos do chamador.
+Modificar a entrada original, o que `loadRuleSet`/`getActiveRules` retornam,
+ações, traces ou datas de `listVersions` nunca afeta o estado interno do
+motor - nem o inverso: o motor não modifica nem congela objetos que vêm de
+fora. Um rollback sempre recupera a cópia original daquela versão.
 
-Resultados públicos são cópias mutáveis, independentes entre chamadas. Dentro da
-mesma resposta pode haver aliases: uma ação em `actions` pode ser o mesmo objeto
-da ação correspondente em `results`. Isso não compartilha estado com o motor.
-`trace.expected` e `trace.actual` também são cópias; alterar fatos depois da
-avaliação não altera traces anteriores. Fatos novos ou modificados, naturalmente,
-podem mudar a avaliação seguinte.
+Dentro de uma mesma resposta pode haver aliases (a mesma ação aparecendo em
+`actions` e em `results`), mas isso nunca compartilha estado com o motor.
+`trace.expected`/`trace.actual` também são cópias: alterar fatos depois de
+uma avaliação não muda traces já retornados.
 
-`getByPath` é um helper de leitura: seu retorno é uma referência ao dado do
-chamador, sem cópia. Ele não acessa versões internas.
-
-Objetos e arrays continuam sendo comparados por **identidade**, sem igualdade
-profunda. Depois de `loadRuleSet`, o valor interno já é outra cópia: compartilhar
-um objeto entre a regra original e os fatos deixa de fazê-los iguais. Compare
-campos escalares para expressar igualdade de conteúdo. O helper independente
-`evaluateCondition` compara os valores recebidos e copia somente o trace.
+Comparações continuam por **identidade**, não por igualdade profunda - depois
+de `loadRuleSet`, o valor interno já é outra cópia, então compartilhar um
+objeto entre a regra original e os fatos não os torna "iguais" para o motor.
+Para expressar igualdade de conteúdo, compare campos escalares.
+`getByPath` é só leitura e retorna uma referência direta ao dado do chamador
+(não copia, não acessa versões internas). `evaluateCondition`, o helper
+independente de avaliação de uma condição isolada, também copia apenas o
+trace.
 
 ### Validação isolada
 
@@ -197,40 +188,41 @@ const { valid, errors } = validateRuleSet(jsonQualquer);
 const validation = validateFacts(fatos);
 ```
 
-Útil para validar um RuleSet antes de publicá-lo (ex.: num pipeline de CI ou
-numa tela de admin), sem precisar instanciar o motor.
+Útil para validar um `RuleSet` antes de publicá-lo (por exemplo, num pipeline
+de CI ou numa tela de administração) sem precisar instanciar o motor.
+`evaluate`/`explain` validam fatos internamente e lançam
+`FactsValidationError` para entradas inválidas; `evaluateCondition` valida
+tanto a condição quanto os fatos, lançando `RuleValidationError` quando a
+condição é inválida.
 
-`evaluate` e `explain` validam fatos e lançam `FactsValidationError` para entradas
-inválidas. `evaluateCondition` também valida sua condição e os fatos; condições
-inválidas lançam `RuleValidationError`.
-
-### Domínio de valores e validação
+### Domínio de valores e limites
 
 - Regras aceitam `null`, booleanos, strings, números finitos, arrays densos e
   objetos simples com protótipo `Object.prototype` ou `null`.
 - Fatos têm raiz objeto e aceitam os mesmos dados, mais `undefined` explícito.
-- Ciclos, Date, Map, Set, RegExp, instâncias de classes, funções, bigint, símbolos,
-  proxies, accessors, propriedades não enumeráveis, arrays esparsos e propriedades
-  extras em arrays são rejeitados. Estruturas compartilhadas sem ciclos são aceitas.
-- A cópia é estrutural: não usa `JSON.stringify`/`parse` e não converte valores.
-  Objetos congelados são aceitos; valores como `-0` são preservados.
-- Propriedades desconhecidas no ruleset, regra, ação ou condição são erros. Assim,
-  `enabld: false` não deixa uma regra habilitada por engano. Fatos, `action.params`
-  e objetos usados como valores permitem chaves de dados livres.
-- `description` deve ser string, `enabled` booleano e `priority` número finito.
-  `action.params`, quando presente, deve ser objeto. Opcionais devem ser omitidos
-  quando ausentes: `description: undefined`, por exemplo, não pertence ao domínio JSON.
-- `gt`, `gte`, `lt`, `lte` exigem `value` numérico finito; `in`/`notIn` exigem array.
-  `eq`/`ne` exigem `value` e aceitam qualquer valor do domínio JSON, inclusive `null`.
-  `exists`/`notExists` dispensam `value`; se fornecido, deve ser JSON válido e é ignorado.
-- Cada condição contém exclusivamente campos de comparação, `all`, `any` ou `not`.
-  `all`/`any` exigem arrays não vazios; `not` exige uma condição válida.
+- Ciclos, `Date`, `Map`, `Set`, `RegExp`, instâncias de classe, funções,
+  `bigint`, símbolos, proxies, accessors, propriedades não enumeráveis,
+  arrays esparsos e propriedades extras em arrays são rejeitados. Estruturas
+  compartilhadas sem ciclo são aceitas normalmente.
+- A cópia é estrutural (não usa `JSON.stringify`/`parse`, não converte
+  valores): objetos congelados são aceitos, e valores como `-0` são
+  preservados exatamente.
+- Propriedades desconhecidas em ruleset, regra, ação ou condição são erro de
+  validação - um `enabld: false` digitado errado não deixa a regra habilitada
+  por engano. Fatos, `action.params` e objetos usados como valor de condição
+  aceitam chaves livres.
+- `description` deve ser string, `enabled` booleano, `priority` número
+  finito; `action.params`, quando presente, deve ser objeto. Campos opcionais
+  devem ser omitidos quando ausentes - `description: undefined`, por
+  exemplo, não é um valor JSON válido.
+- `gt`/`gte`/`lt`/`lte` exigem `value` numérico finito; `in`/`notIn` exigem
+  array. `eq`/`ne` exigem `value` e aceitam qualquer valor do domínio JSON,
+  incluindo `null`. `exists`/`notExists` dispensam `value`.
+- Cada condição contém exclusivamente campos de comparação, ou `all`, `any`
+  ou `not` - nunca uma mistura. `all`/`any` exigem arrays não vazios.
 
 Os tipos públicos incluem `JsonValue`, `JsonObject`, `FactValue`, `Facts`,
-`RulesEngineOptions`, `ValidationResult` e os erros específicos. Números finitos,
-chaves desconhecidas e limites são verificados em runtime.
-
-### Limites por entrada
+`RulesEngineOptions`, `ValidationResult` e as classes de erro específicas.
 
 | Limite | Valor |
 | --- | ---: |
@@ -239,37 +231,39 @@ chaves desconhecidas e limites são verificados em runtime.
 | Condições por versão ou condição independente | 10.000 |
 | Valores visitados por entrada | 100.000 |
 
-Cada propriedade/elemento conta como um valor; containers também contam, inclusive
-a raiz. Arrays e objetos aumentam a profundidade estrutural, não apenas combinadores.
-Ocorrências compartilhadas são contadas novamente, impedindo que um grafo compacto
-contorne o limite. Os limites também protegem fatos e valores aninhados em ações;
-excessos retornam erros com caminho, antes de copiar ou avaliar. São constantes
-exportadas em `VALIDATION_LIMITS`, sem configuração dinâmica nesta versão.
+Cada propriedade ou elemento conta como um valor, containers incluídos
+(inclusive a raiz); ocorrências compartilhadas são contadas de novo, o que
+impede que um grafo compacto contorne o limite. Os mesmos limites protegem
+fatos e valores aninhados em ações, e um excesso retorna erro com o caminho
+exato antes de copiar ou avaliar qualquer coisa. São constantes exportadas em
+`VALIDATION_LIMITS`; não há configuração dinâmica nesta versão.
 
 ## Explicabilidade
 
 Todo resultado de `evaluate`/`explain` traz, por regra, uma árvore `trace`
-mostrando cada condição folha avaliada (campo, operador, valor esperado,
-valor real) e o resultado de cada combinador — dá para responder "por que
-essa regra casou/não casou" sem re-instrumentar nada.
+com cada condição folha avaliada (campo, operador, valor esperado, valor
+real) e o resultado de cada combinador - dá para responder "por que essa
+regra casou ou não casou" sem instrumentar nada.
 
-Todas as condições de uma regra avaliada aparecem no trace, mesmo quando o resultado
-de `all`/`any` já é conhecido. `explain()` mantém o mesmo contrato de `evaluate()`.
-Folhas incluem `actualState`: `missing`, `undefined`, `null` ou `value`. Por exemplo:
+Todas as condições de uma regra aparecem no trace, mesmo quando o resultado
+de `all`/`any` já está decidido. `explain()` tem exatamente o mesmo contrato
+de `evaluate()`; é só um nome mais claro para uso em depuração. Folhas
+incluem `actualState`: `missing`, `undefined`, `null` ou `value`:
 
 ```json
 { "type": "field", "field": "destino.regiao", "operator": "exists", "passed": false, "actualState": "missing" }
 ```
 
-Em JavaScript, `actual` existe com valor `undefined` para os dois primeiros estados;
-JSON omite esse atributo, mas preserva `actualState`. `actual: null`, `false`, `0`
-e `""` são mantidos. O estado descreve o campo consultado: valores `undefined`
-dentro de objetos/arrays em `actual` seguem as regras normais de serialização JSON.
+Em JavaScript, `actual` existe com valor `undefined` para os dois primeiros
+estados; a serialização JSON omite esse atributo, mas preserva
+`actualState`. Valores `null`, `false`, `0` e `""` em `actual` são mantidos
+normalmente.
 
-## Cenários da demonstração
+### Cenários da demo
 
-A demo executa assertions e encerra com erro se alguma expectativa falhar.
-Na v1, o frete exige R$200 e Sudeste/Sul; na v2, R$150 e Sudeste/Sul/Centro-Oeste.
+A demo roda como uma suíte de assertions e falha se qualquer expectativa não
+se confirmar. Na v1 do ruleset, o frete grátis exige R$200 no Sudeste/Sul; na
+v2, R$150 no Sudeste/Sul/Centro-Oeste:
 
 | Pedido | Frete na v1 | Frete na v2 |
 | --- | --- | --- |
@@ -281,26 +275,25 @@ Na v1, o frete exige R$200 e Sudeste/Sul; na v2, R$150 e Sudeste/Sul/Centro-Oest
 | R$200 no Sudeste | Sim | Sim |
 | R$500, primeira compra, sem região | Não | Não |
 
-O pedido sem região mantém o cliente e recebe 5%. Um pedido de R$500 com seis itens
-e primeira compra retorna as ações de 10% e 5% separadamente. A aplicação decide
-se e como combinar descontos; o núcleo e a demo não os somam nem aplicam.
-`validateCheckoutActions`, no exemplo, verifica percentuais entre 0 e 100.
-A demo também confirma rejeição de atualização inválida, histórico preservado,
-rollback e falha explícita se a regra procurada para explicação não existir.
+Um pedido de R$500 com seis itens e primeira compra retorna as ações de 10%
+e 5% separadamente - o núcleo (e a demo) não somam nem aplicam descontos por
+conta própria; isso é decisão da aplicação consumidora. A demo também cobre
+rejeição de atualização inválida, preservação de histórico, rollback e o
+erro esperado quando a regra procurada para explicação não existe.
 
 ## API HTTP local
 
-O servidor de demonstração escuta em **127.0.0.1**, sem opção `HOST`.
-`PORT` define uma porta entre 0 e 65535 (padrão 3000; zero escolhe uma porta livre).
-A fábrica `createDemoServer({ engine, adminToken })` não inicia escuta ao importar
-o módulo; os testes fazem o bind local e encerram as conexões ao terminar.
+O servidor de exemplo escuta em **127.0.0.1** (sem opção `HOST`). `PORT`
+define uma porta entre 0 e 65535 (padrão 3000; `0` escolhe uma porta livre).
+`createDemoServer({ engine, adminToken })` é uma fábrica pura - não inicia
+escuta ao ser importada.
 
 ```bash
 export ADMIN_TOKEN="token-local-escolhido-por-voce"
 npm run server
 ```
 
-Em outro terminal, configure o mesmo token para as operações administrativas:
+Em outro terminal, com o mesmo token para as rotas administrativas:
 
 ```bash
 export ADMIN_TOKEN="token-local-escolhido-por-voce"
@@ -325,53 +318,64 @@ curl http://127.0.0.1:3000/rules/rollback \
 | `GET /rules/versions` | Exige token | 200 |
 | `POST /rules/rollback` | Somente `version`, string não vazia; exige token | 200 |
 
-JSON malformado ou falha de leitura: **400**. Corpo incompatível, regra inválida
-ou versão duplicada: **422**. Versão de rollback/rota inexistente: **404**.
-Corpo acima de **1 MiB**, contado em bytes, inclusive envio chunked: **413**.
-Credenciais ausentes/incorretas: **401**. Sem `ADMIN_TOKEN` ou com token vazio,
-todas as rotas `/rules` ficam desabilitadas com **503**; avaliação continua disponível.
-A autenticação administrativa ocorre antes da leitura/validação do corpo.
+JSON malformado ou falha de leitura: **400**. Corpo incompatível, regra
+inválida ou versão duplicada: **422**. Rollback ou rota inexistente: **404**.
+Corpo acima de **1 MiB** (contado em bytes, inclusive envio chunked): **413**.
+Credenciais ausentes ou incorretas: **401**. Sem `ADMIN_TOKEN` configurado
+(ou vazio), todas as rotas `/rules` respondem **503**, mas `/evaluate`
+continua disponível normalmente. A autenticação acontece antes da leitura do
+corpo da requisição.
 
-Falhas inesperadas recebem **500** com mensagem genérica; detalhes ficam no log
-do servidor. Requisições rejeitadas preservam a versão ativa. Se o cliente interromper
-a conexão, a leitura é encerrada sem carregar versão; uma conexão já encerrada
-não consegue receber resposta. SIGINT/SIGTERM encerram servidor e conexões.
+Falhas inesperadas retornam **500** com mensagem genérica (detalhes ficam no
+log do servidor) e nunca alteram a versão ativa. Se o cliente interrompe a
+conexão, a leitura é cancelada sem carregar nenhuma versão. `SIGINT`/`SIGTERM`
+encerram o servidor e as conexões abertas de forma graciosa.
 
 ## Build e consumo do pacote
 
-O build sempre remove `dist`, compila e copia os dois JSONs para `dist/examples`.
-`main`, `types` e `exports` apontam para `dist/src/index.js` e `dist/src/index.d.ts`.
-O pacote distribui somente `dist/src`, `dist/examples`, README e metadados; testes
-compilados ficam disponíveis no repositório, fora do pacote.
+O build remove `dist`, compila e copia os dois JSONs de exemplo para
+`dist/examples`. `main`, `types` e `exports` apontam para
+`dist/src/index.js`/`.d.ts`. O pacote publicado carrega só `dist/src`,
+`dist/examples`, o `README.md` e a `LICENSE` - os testes ficam no
+repositório, fora do pacote.
 
 ```bash
-npm pack                 # prepack executa build limpo; gera .tgz local
-npm run test:package     # instala um .tgz em pasta temporária, sem publicar
+npm pack                 # prepack roda o build; gera um .tgz local
+npm run test:package     # instala esse .tgz numa pasta temporária, sem publicar nada
 ```
 
-A verificação de consumo importa `rules-engine` pela entrada pública, verifica
-tipos com TypeScript/NodeNext, executa a demo instalada e testa HTTP nos servidores
-compilado e instalado, com portas temporárias e encerramento por SIGTERM.
+A verificação de empacotamento importa `rules-engine` pela entrada pública,
+checa os tipos com TypeScript/NodeNext, roda a demo já instalada e testa a
+API HTTP tanto na versão compilada quanto na instalada, com portas
+temporárias e encerramento por `SIGTERM`.
 
-### Compatibilidade e migração
+## Cobertura e CI
 
-- As novas rejeições de domínio, propriedades desconhecidas e limites são restrições
-  de compatibilidade. Converta dados especiais explicitamente antes de chamar o motor.
-- Corrija erros de digitação, operandos numéricos em strings e opcionais inválidos.
-  Nenhuma regra comercial de checkout foi adicionada ao núcleo.
-- Atualize referências ao ID antigo `frete-gratis-sudeste` para
-  `frete-gratis-regioes-elegiveis` nos exemplos e consumidores que usem esse ID.
-- Use `import ... from "rules-engine"`; imports de arquivos internos não são exportados.
-- Atualizações administrativas agora exigem token, inclusive localmente.
-- Comparações de ausência foram preservadas; a documentação anterior estava incorreta.
-  Considere `actualState` ao interpretar traces serializados e compare objetos por
-  campos escalares quando precisar igualdade de conteúdo.
-- Cópias internas e públicas custam memória e processamento. A ordenação ocorre
-  uma vez por versão; não há alegação de ganho percentual sem benchmark.
+O workflow em `.github/workflows/ci.yml` roda em todo push e pull request: um
+job de lint + typecheck, seguido de testes em matriz contra Node `22.0.0`
+(piso mínimo declarado em `engines`), `22` e `24`. Todas as versões rodam
+`test`, `build`, `test:dist`, `demo` e `test:package`.
 
-## Próximos passos possíveis (fora do escopo desta primeira versão)
+`npm run test:coverage` mede linhas, branches e funções de `src/` (excluindo
+o barrel `index.ts` e o arquivo só-de-tipos `types.ts`) e falha se cair
+abaixo de 90% linhas, 90% branches ou 95% funções. Esse comando precisa de
+Node **22.8.0+** - `--test-coverage-lines`, `--test-coverage-branches` e
+`--test-coverage-functions` não existem em versões anteriores - por isso não
+roda na entrada `22.0.0` da matriz, só nas demais.
 
-- Persistir o histórico de versões em disco/banco (hoje vive em memória, por engine).
-- Watch de arquivo (`fs.watch`) para hot-reload automático a partir de um JSON em disco.
-- Um segundo tipo de "value" dinâmico (ex.: `{ "field": "b" }` para comparar dois campos entre si).
-- Motor de conflito mais rico entre ações do mesmo tipo (hoje quem resolve é o consumidor da lista de `actions`).
+## Roadmap
+
+Itens deliberadamente fora do escopo desta primeira versão:
+
+- Persistir o histórico de versões em disco/banco (hoje vive em memória, por
+  instância do motor).
+- Watch de arquivo (`fs.watch`) para hot-reload automático a partir de um
+  JSON em disco.
+- Um segundo tipo de "value" dinâmico (por exemplo,
+  `{ "field": "b" }`, para comparar dois campos entre si).
+- Resolução de conflito mais rica entre ações do mesmo tipo - hoje quem
+  decide é o consumidor da lista de `actions`.
+
+## Licença
+
+ [`MIT - Ver`](./LICENSE)
