@@ -37,6 +37,11 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run test:coverage
+        # --test-coverage-lines/-branches/-functions (usados no script
+        # test:coverage) só existem a partir do Node 22.8.0 (nodejs/node#54429).
+        # 22.0.0 é mantido na matriz para validar o piso mínimo declarado em
+        # "engines", mas não roda esta etapa.
+        if: matrix.node-version != '22.0.0'
       - run: npm run build
       - run: npm run test:dist
       - run: npm run demo
