@@ -81,7 +81,8 @@ try {
   const manifest = packed[0];
   const paths = manifest.files.map(file => file.path);
   for (const required of ["dist/src/index.js", "dist/src/index.d.ts", "dist/examples/demo.js", "dist/examples/server.js", "dist/examples/rules-frete-desconto.v1.json", "dist/examples/rules-frete-desconto.v2.json"]) assert.ok(paths.includes(required), required);
-  assert.ok(paths.every(file => file === "package.json" || file === "README.md" || file.startsWith("dist/src/") || file.startsWith("dist/examples/")), paths.join("\n"));
+  // npm sempre inclui LICENSE no pacote, independentemente de "files".
+  assert.ok(paths.every(file => file === "package.json" || file === "README.md" || file === "LICENSE" || file.startsWith("dist/src/") || file.startsWith("dist/examples/")), paths.join("\n"));
   const consumer = path.join(temporary, "consumer");
   mkdirSync(consumer);
   writeFileSync(path.join(consumer, "package.json"), JSON.stringify({ private: true, type: "module" }));
