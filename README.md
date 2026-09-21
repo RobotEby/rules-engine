@@ -35,14 +35,26 @@ npm run test:dist     # executa os testes compilados
 npm run test:package  # npm pack + consumidor temporário: ESM, tipos, demo e HTTP
 npm run lint          # ESLint (flat config, com verificação de tipos)
 npm run typecheck     # tsc --noEmit sobre src/examples/tests
+npm run test:coverage # cobertura de src/ (linhas/branches/funções), com piso mínimo
 ```
+
+## Cobertura
+
+`npm run test:coverage` mede linhas, branches e funções apenas de `src/`
+(excluindo o barrel `index.ts` e o arquivo só-de-tipos `types.ts`, que não têm
+código executável). Nesta revisão: **95.54% linhas, 96.70% branches, 100%
+funções**. O comando falha se cair abaixo de 90/90/95 — o mesmo piso é
+verificado no CI a cada mudança. As linhas remanescentes fora do piso são
+declarações `import`/`export` (não executáveis) e dois `throw`/exhaustiveness
+guards inalcançáveis em tempo de execução, mantidos como defesa em profundidade.
 
 ## Integração contínua
 
 O workflow em `.github/workflows/ci.yml` roda em push e pull request: um job de
 lint + typecheck, seguido de um job de testes em matriz (Node 22.0.0, 22 e 24)
-que executa `test`, `build`, `test:dist`, `demo` e `test:package` — as mesmas
-verificações descritas acima, na íntegra, a cada mudança.
+que executa `test`, `test:coverage`, `build`, `test:dist`, `demo` e
+`test:package` — as mesmas verificações descritas acima, na íntegra, a cada
+mudança.
 
 ## Licença
 
