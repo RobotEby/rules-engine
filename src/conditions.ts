@@ -24,7 +24,6 @@ function isFieldCondition(c: Condition): c is FieldCondition {
   return Object.hasOwn(c, "field") && Object.hasOwn(c, "operator");
 }
 
-/** Retorna a referência do chamador; resultados de avaliação usam cópias. */
 export function getByPath(obj: Facts, path: string): unknown {
   return resolvePath(obj, path).value;
 }
@@ -64,9 +63,15 @@ function compare(
         actual <= expected
       );
     case "in":
-      return Array.isArray(expected) && Array.prototype.includes.call(expected, actual);
+      return (
+        Array.isArray(expected) &&
+        Array.prototype.includes.call(expected, actual)
+      );
     case "notIn":
-      return Array.isArray(expected) && !Array.prototype.includes.call(expected, actual);
+      return (
+        Array.isArray(expected) &&
+        !Array.prototype.includes.call(expected, actual)
+      );
     case "exists":
       return actual !== undefined && actual !== null;
     case "notExists":
@@ -87,7 +92,6 @@ export function evaluateCondition(
   return evaluateValidatedCondition(condition, facts);
 }
 
-/** Uso interno: condições e fatos já passaram pela validação limitada. */
 export function evaluateValidatedCondition(
   condition: Condition,
   facts: Facts,
@@ -103,17 +107,27 @@ export function evaluateValidatedCondition(
       operator: condition.operator,
       expected: copyData(condition.value, copies),
       actual: copyData(actual, copies),
-      actualState: !found ? "missing" : actual === undefined ? "undefined" : actual === null ? "null" : "value",
+      actualState: !found
+        ? "missing"
+        : actual === undefined
+          ? "undefined"
+          : actual === null
+            ? "null"
+            : "value",
     };
   }
 
   if (isAllCondition(condition)) {
-    const children = Array.from(condition.all, c => evaluateValidatedCondition(c, facts, copies));
+    const children = Array.from(condition.all, (c) =>
+      evaluateValidatedCondition(c, facts, copies),
+    );
     return { type: "all", passed: children.every((c) => c.passed), children };
   }
 
   if (isAnyCondition(condition)) {
-    const children = Array.from(condition.any, c => evaluateValidatedCondition(c, facts, copies));
+    const children = Array.from(condition.any, (c) =>
+      evaluateValidatedCondition(c, facts, copies),
+    );
     return { type: "any", passed: children.some((c) => c.passed), children };
   }
 
