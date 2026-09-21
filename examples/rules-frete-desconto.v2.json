@@ -1,0 +1,54 @@
+{
+  "version": "2",
+  "name": "frete-e-desconto",
+  "description": "v2: limite de frete grátis reduzido de 200 para 150 e nova região (Centro-Oeste)",
+  "rules": [
+    {
+      "id": "frete-gratis-regioes-elegiveis",
+      "description": "Frete grátis para pedidos a partir de R$150 nas regiões Sudeste, Sul e Centro-Oeste",
+      "priority": 10,
+      "enabled": true,
+      "conditions": {
+        "all": [
+          { "field": "valorPedido", "operator": "gte", "value": 150 },
+          { "field": "destino.regiao", "operator": "in", "value": ["Sudeste", "Sul", "Centro-Oeste"] }
+        ]
+      },
+      "action": {
+        "type": "FREE_SHIPPING",
+        "params": { "motivo": "pedido >= 150 em regiao elegivel (v2)" }
+      }
+    },
+    {
+      "id": "desconto-volume-alto",
+      "description": "10% de desconto para pedidos com 5 ou mais itens",
+      "priority": 5,
+      "enabled": true,
+      "conditions": {
+        "field": "quantidadeItens",
+        "operator": "gte",
+        "value": 5
+      },
+      "action": {
+        "type": "PERCENT_DISCOUNT",
+        "params": { "percentual": 10 }
+      }
+    },
+    {
+      "id": "cliente-vip-ou-primeira-compra",
+      "description": "5% de desconto para clientes VIP ou na primeira compra",
+      "priority": 1,
+      "enabled": true,
+      "conditions": {
+        "any": [
+          { "field": "cliente.vip", "operator": "eq", "value": true },
+          { "field": "cliente.primeiraCompra", "operator": "eq", "value": true }
+        ]
+      },
+      "action": {
+        "type": "PERCENT_DISCOUNT",
+        "params": { "percentual": 5 }
+      }
+    }
+  ]
+}

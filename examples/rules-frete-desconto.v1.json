@@ -1,0 +1,54 @@
+{
+  "version": "1",
+  "name": "frete-e-desconto",
+  "description": "Regras de frete grátis e desconto por volume para o checkout",
+  "rules": [
+    {
+      "id": "frete-gratis-regioes-elegiveis",
+      "description": "Frete grátis para pedidos a partir de R$200 nas regiões Sudeste e Sul",
+      "priority": 10,
+      "enabled": true,
+      "conditions": {
+        "all": [
+          { "field": "valorPedido", "operator": "gte", "value": 200 },
+          { "field": "destino.regiao", "operator": "in", "value": ["Sudeste", "Sul"] }
+        ]
+      },
+      "action": {
+        "type": "FREE_SHIPPING",
+        "params": { "motivo": "pedido >= 200 em regiao elegivel" }
+      }
+    },
+    {
+      "id": "desconto-volume-alto",
+      "description": "10% de desconto para pedidos com 5 ou mais itens",
+      "priority": 5,
+      "enabled": true,
+      "conditions": {
+        "field": "quantidadeItens",
+        "operator": "gte",
+        "value": 5
+      },
+      "action": {
+        "type": "PERCENT_DISCOUNT",
+        "params": { "percentual": 10 }
+      }
+    },
+    {
+      "id": "cliente-vip-ou-primeira-compra",
+      "description": "5% de desconto para clientes VIP ou na primeira compra",
+      "priority": 1,
+      "enabled": true,
+      "conditions": {
+        "any": [
+          { "field": "cliente.vip", "operator": "eq", "value": true },
+          { "field": "cliente.primeiraCompra", "operator": "eq", "value": true }
+        ]
+      },
+      "action": {
+        "type": "PERCENT_DISCOUNT",
+        "params": { "percentual": 5 }
+      }
+    }
+  ]
+}

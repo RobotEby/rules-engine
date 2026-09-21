@@ -1,0 +1,52 @@
+{
+  "name": "rules-engine",
+  "version": "1.0.0",
+  "description": "Motor de regras em JSON (TypeScript) com hot-reload, versionamento e explicabilidade",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/src",
+    "dist/examples",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "prepack": "npm run build",
+    "demo": "tsx examples/demo.ts",
+    "demo:dist": "node dist/examples/demo.js",
+    "server": "tsx examples/server.ts",
+    "server:dist": "node dist/examples/server.js",
+    "test": "tsx --test tests/*.test.ts",
+    "test:dist": "node --test dist/tests/*.test.js",
+    "test:package": "node scripts/verify-package.mjs",
+    "lint": "eslint .",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json",
+    "test:coverage": "tsx --test --experimental-test-coverage --test-coverage-include=\"src/**/*.ts\" --test-coverage-exclude=\"src/index.ts\" --test-coverage-exclude=\"src/types.ts\" --test-coverage-lines=90 --test-coverage-branches=90 --test-coverage-functions=95 tests/*.test.ts"
+  },
+  "keywords": [
+    "rules-engine",
+    "json",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^20.19.43",
+    "eslint": "^10.10.0",
+    "globals": "^16.5.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.70.0"
+  }
+}
