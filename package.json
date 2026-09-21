@@ -30,7 +30,8 @@
     "test:dist": "node --test dist/tests/*.test.js",
     "test:package": "node scripts/verify-package.mjs",
     "lint": "eslint .",
-    "typecheck": "node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json"
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json",
+    "test:coverage": "tsx --test --experimental-test-coverage --test-coverage-include=\"src/**/*.ts\" --test-coverage-exclude=\"src/index.ts\" --test-coverage-exclude=\"src/types.ts\" --test-coverage-lines=90 --test-coverage-branches=90 --test-coverage-functions=95 tests/*.test.ts"
   },
   "keywords": [
     "rules-engine",
