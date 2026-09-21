@@ -11,6 +11,8 @@ for (const [name, input, path] of [
   ["gte string", ruleset({ rules: [rule({ conditions: { field: "x", operator: "gte", value: "200" } })] }), "conditions.value"],
   ["params number", ruleset({ rules: [rule({ action: { type: "A", params: 5 } })] }), "action.params"],
   ["params array", ruleset({ rules: [rule({ action: { type: "A", params: [] } })] }), "action.params"],
+  ["action missing", ruleset({ rules: [{ id: "r", conditions: { field: "x", operator: "eq", value: 1 } }] }), "action:"],
+  ["action string", ruleset({ rules: [rule({ action: "A" })] }), "action:"],
   ["rule description", ruleset({ rules: [rule({ description: 1 })] }), "description"],
   ["ruleset description", ruleset({ description: 1 }), "description"],
   ["priority infinity", ruleset({ rules: [rule({ priority: Infinity })] }), "priority"],
