@@ -33,7 +33,20 @@ npm run demo:dist     # executa a demo compilada
 npm run server:dist   # executa o servidor compilado
 npm run test:dist     # executa os testes compilados
 npm run test:package  # npm pack + consumidor temporário: ESM, tipos, demo e HTTP
+npm run lint          # ESLint (flat config, com verificação de tipos)
+npm run typecheck     # tsc --noEmit sobre src/examples/tests
 ```
+
+## Integração contínua
+
+O workflow em `.github/workflows/ci.yml` roda em push e pull request: um job de
+lint + typecheck, seguido de um job de testes em matriz (Node 22.0.0, 22 e 24)
+que executa `test`, `build`, `test:dist`, `demo` e `test:package` — as mesmas
+verificações descritas acima, na íntegra, a cada mudança.
+
+## Licença
+
+MIT — ver [`LICENSE`](./LICENSE).
 
 ## Conceitos
 
