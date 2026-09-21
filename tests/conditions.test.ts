@@ -23,6 +23,8 @@ test("operadores numéricos respeitam limites (gte/lte são inclusivos)", () => 
   assert.equal(evaluateCondition({ field: "v", operator: "gte", value: 200 }, { v: 200 }).passed, true);
   assert.equal(evaluateCondition({ field: "v", operator: "gte", value: 200 }, { v: 199.99 }).passed, false);
   assert.equal(evaluateCondition({ field: "v", operator: "gt", value: 200 }, { v: 200 }).passed, false);
+  assert.equal(evaluateCondition({ field: "v", operator: "lt", value: 5 }, { v: 4.99 }).passed, true);
+  assert.equal(evaluateCondition({ field: "v", operator: "lt", value: 5 }, { v: 5 }).passed, false);
   assert.equal(evaluateCondition({ field: "v", operator: "lte", value: 5 }, { v: 5 }).passed, true);
 });
 
