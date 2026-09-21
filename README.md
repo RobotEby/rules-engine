@@ -35,26 +35,33 @@ npm run test:dist     # executa os testes compilados
 npm run test:package  # npm pack + consumidor temporário: ESM, tipos, demo e HTTP
 npm run lint          # ESLint (flat config, com verificação de tipos)
 npm run typecheck     # tsc --noEmit sobre src/examples/tests
-npm run test:coverage # cobertura de src/ (linhas/branches/funções), com piso mínimo
+npm run test:coverage # cobertura de src/ (linhas/branches/funções); requer Node 22.8.0+
 ```
 
 ## Cobertura
 
 `npm run test:coverage` mede linhas, branches e funções apenas de `src/`
 (excluindo o barrel `index.ts` e o arquivo só-de-tipos `types.ts`, que não têm
-código executável). Nesta revisão: **95.54% linhas, 96.70% branches, 100%
-funções**. O comando falha se cair abaixo de 90/90/95 — o mesmo piso é
-verificado no CI a cada mudança. As linhas remanescentes fora do piso são
-declarações `import`/`export` (não executáveis) e dois `throw`/exhaustiveness
-guards inalcançáveis em tempo de execução, mantidos como defesa em profundidade.
+código executável). Nesta revisão, tipicamente **~95% linhas, 96.70%
+branches, 100% funções** (a métrica de linhas oscila levemente entre execuções
+porque `--experimental-test-coverage` ainda é uma API experimental do Node).
+O comando falha se cair abaixo de 90/90/95 — o mesmo piso é verificado no CI a
+cada mudança. As linhas remanescentes fora do piso são declarações
+`import`/`export` (não executáveis) e dois `throw`/exhaustiveness guards
+inalcançáveis em tempo de execução, mantidos como defesa em profundidade.
+
+`test:coverage` exige Node **22.8.0+** (onde `--test-coverage-lines`,
+`--test-coverage-branches` e `--test-coverage-functions` foram introduzidos);
+não roda no piso mínimo declarado em `engines` (`>=22.0.0`). No CI, essa etapa
+é pulada especificamente na entrada `22.0.0` da matriz.
 
 ## Integração contínua
 
 O workflow em `.github/workflows/ci.yml` roda em push e pull request: um job de
 lint + typecheck, seguido de um job de testes em matriz (Node 22.0.0, 22 e 24)
-que executa `test`, `test:coverage`, `build`, `test:dist`, `demo` e
-`test:package` — as mesmas verificações descritas acima, na íntegra, a cada
-mudança.
+que executa `test`, `build`, `test:dist`, `demo` e `test:package` em todas as
+versões, mais `test:coverage` nas versões que suportam os limiares de
+cobertura (todas exceto `22.0.0`).
 
 ## Licença
 
